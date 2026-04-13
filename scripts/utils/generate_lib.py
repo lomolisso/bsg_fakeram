@@ -7,6 +7,56 @@ import datetime
 # INTERNAL HELPERS
 ################################################################################
 
+def _lib_rd_out_timing(LIB_file, name, out_reg, related_pins_comb,
+                       slew_indicies, load_indicies, tcq, min_slew, max_slew):
+    """Write timing arcs for the rd_out output bus.
+
+    out_reg=True  → one rising-edge arc from clk (registered output)
+    out_reg=False → one combinational arc per pin in related_pins_comb
+    """
+    if out_reg:
+        LIB_file.write('        timing() {\n')
+        LIB_file.write('            related_pin : "clk" ;\n')
+        LIB_file.write('            timing_type : rising_edge;\n')
+        LIB_file.write('            timing_sense : non_unate;\n')
+        for arc in ('cell_rise', 'cell_fall'):
+            LIB_file.write('            %s(%s_mem_out_delay_template) {\n' % (arc, name))
+            LIB_file.write('                index_1 ("%s");\n' % slew_indicies)
+            LIB_file.write('                index_2 ("%s");\n' % load_indicies)
+            LIB_file.write('                values ( \\\n')
+            LIB_file.write('                  "%.3f, %.3f", \\\n' % (tcq, tcq))
+            LIB_file.write('                  "%.3f, %.3f" \\\n' % (tcq, tcq))
+            LIB_file.write('                )\n')
+            LIB_file.write('            }\n')
+        for tran in ('rise', 'fall'):
+            LIB_file.write('            %s_transition(%s_mem_out_slew_template) {\n' % (tran, name))
+            LIB_file.write('                index_1 ("%s");\n' % load_indicies)
+            LIB_file.write('                values ("%.3f, %.3f")\n' % (min_slew, max_slew))
+            LIB_file.write('            }\n')
+        LIB_file.write('        }\n')
+    else:
+        for rpin in related_pins_comb:
+            LIB_file.write('        timing() {\n')
+            LIB_file.write('            related_pin : "%s" ;\n' % rpin)
+            LIB_file.write('            timing_type : combinational;\n')
+            LIB_file.write('            timing_sense : non_unate;\n')
+            for arc in ('cell_rise', 'cell_fall'):
+                LIB_file.write('            %s(%s_mem_out_delay_template) {\n' % (arc, name))
+                LIB_file.write('                index_1 ("%s");\n' % slew_indicies)
+                LIB_file.write('                index_2 ("%s");\n' % load_indicies)
+                LIB_file.write('                values ( \\\n')
+                LIB_file.write('                  "%.3f, %.3f", \\\n' % (tcq, tcq))
+                LIB_file.write('                  "%.3f, %.3f" \\\n' % (tcq, tcq))
+                LIB_file.write('                )\n')
+                LIB_file.write('            }\n')
+            for tran in ('rise', 'fall'):
+                LIB_file.write('            %s_transition(%s_mem_out_slew_template) {\n' % (tran, name))
+                LIB_file.write('                index_1 ("%s");\n' % load_indicies)
+                LIB_file.write('                values ("%.3f, %.3f")\n' % (min_slew, max_slew))
+                LIB_file.write('            }\n')
+            LIB_file.write('        }\n')
+
+
 def _lib_pin_setup_hold(LIB_file, name, pin_name, slew_indicies, tsetup, thold, pindynamic):
     '''Write setup/hold timing arcs and internal power for a scalar input pin.'''
     LIB_file.write('    pin(%s){\n' % pin_name)
@@ -68,7 +118,7 @@ def _lib_bus_setup_hold(LIB_file, name, bus_name, bus_type, slew_indicies, tsetu
 
 def _lib_write_1rw_pins(LIB_file, name, num_rwport, slew_indicies, load_indicies,
                         tsetup, thold, tcq, min_slew, max_slew,
-                        min_driver_in_cap, max_load, pindynamic):
+                        min_driver_in_cap, max_load, pindynamic, out_reg=True):
     '''Emit pin/bus Liberty groups for a classic 1rw (read-write) port.'''
     for _ in range(int(num_rwport)):
         LIB_file.write('    bus(rd_out)   {\n')
@@ -78,25 +128,10 @@ def _lib_write_1rw_pins(LIB_file, name, num_rwport, slew_indicies, load_indicies
         LIB_file.write('        memory_read() {\n')
         LIB_file.write('            address : addr_in;\n')
         LIB_file.write('        }\n')
-        LIB_file.write('        timing() {\n')
-        LIB_file.write('            related_pin : "clk" ;\n')
-        LIB_file.write('            timing_type : rising_edge;\n')
-        LIB_file.write('            timing_sense : non_unate;\n')
-        for arc in ('cell_rise', 'cell_fall'):
-            LIB_file.write('            %s(%s_mem_out_delay_template) {\n' % (arc, name))
-            LIB_file.write('                index_1 ("%s");\n' % slew_indicies)
-            LIB_file.write('                index_2 ("%s");\n' % load_indicies)
-            LIB_file.write('                values ( \\\n')
-            LIB_file.write('                  "%.3f, %.3f", \\\n' % (tcq, tcq))
-            LIB_file.write('                  "%.3f, %.3f" \\\n' % (tcq, tcq))
-            LIB_file.write('                )\n')
-            LIB_file.write('            }\n')
-        for tran in ('rise', 'fall'):
-            LIB_file.write('            %s_transition(%s_mem_out_slew_template) {\n' % (tran, name))
-            LIB_file.write('                index_1 ("%s");\n' % load_indicies)
-            LIB_file.write('                values ("%.3f, %.3f")\n' % (min_slew, max_slew))
-            LIB_file.write('            }\n')
-        LIB_file.write('        }\n')
+        _lib_rd_out_timing(LIB_file, name, out_reg,
+                           related_pins_comb=['addr_in', 'ce_in'],
+                           slew_indicies=slew_indicies, load_indicies=load_indicies,
+                           tcq=tcq, min_slew=min_slew, max_slew=max_slew)
         LIB_file.write('    }\n')
 
     for _ in range(int(num_rwport)):
@@ -203,7 +238,7 @@ def _lib_write_1rw_pins(LIB_file, name, num_rwport, slew_indicies, load_indicies
 
 def _lib_write_1r1w_pins(LIB_file, name, slew_indicies, load_indicies,
                          tsetup, thold, tcq, min_slew, max_slew,
-                         min_driver_in_cap, max_load, pindynamic):
+                         min_driver_in_cap, max_load, pindynamic, out_reg=True):
     '''Emit pin/bus Liberty groups for a 1r1w (exclusive read + write) port.'''
 
     # Read data output: rd_out
@@ -214,25 +249,10 @@ def _lib_write_1r1w_pins(LIB_file, name, slew_indicies, load_indicies,
     LIB_file.write('        memory_read() {\n')
     LIB_file.write('            address : r_addr_in;\n')
     LIB_file.write('        }\n')
-    LIB_file.write('        timing() {\n')
-    LIB_file.write('            related_pin : "clk" ;\n')
-    LIB_file.write('            timing_type : rising_edge;\n')
-    LIB_file.write('            timing_sense : non_unate;\n')
-    for arc in ('cell_rise', 'cell_fall'):
-        LIB_file.write('            %s(%s_mem_out_delay_template) {\n' % (arc, name))
-        LIB_file.write('                index_1 ("%s");\n' % slew_indicies)
-        LIB_file.write('                index_2 ("%s");\n' % load_indicies)
-        LIB_file.write('                values ( \\\n')
-        LIB_file.write('                  "%.3f, %.3f", \\\n' % (tcq, tcq))
-        LIB_file.write('                  "%.3f, %.3f" \\\n' % (tcq, tcq))
-        LIB_file.write('                )\n')
-        LIB_file.write('            }\n')
-    for tran in ('rise', 'fall'):
-        LIB_file.write('            %s_transition(%s_mem_out_slew_template) {\n' % (tran, name))
-        LIB_file.write('                index_1 ("%s");\n' % load_indicies)
-        LIB_file.write('                values ("%.3f, %.3f")\n' % (min_slew, max_slew))
-        LIB_file.write('            }\n')
-    LIB_file.write('        }\n')
+    _lib_rd_out_timing(LIB_file, name, out_reg,
+                       related_pins_comb=['r_addr_in', 'r_ce_in'],
+                       slew_indicies=slew_indicies, load_indicies=load_indicies,
+                       tcq=tcq, min_slew=min_slew, max_slew=max_slew)
     LIB_file.write('    }\n')
 
     # Read address: r_addr_in
@@ -341,6 +361,7 @@ def generate_lib( mem ):
     fo4               = float(mem.fo4_ps)/1e3
 
     port_type  = str(mem.port_type)
+    out_reg    = bool(mem.out_reg)
     num_rwport = mem.rw_ports
 
     # Number of bits for address
@@ -547,10 +568,12 @@ def generate_lib( mem ):
 
     if port_type == '1r1w':
         _lib_write_1r1w_pins(LIB_file, name, slew_indicies, load_indicies, tsetup, thold, tcq,
-                             min_slew, max_slew, min_driver_in_cap, max_load, pindynamic)
+                             min_slew, max_slew, min_driver_in_cap, max_load, pindynamic,
+                             out_reg=out_reg)
     else:
         _lib_write_1rw_pins(LIB_file, name, num_rwport, slew_indicies, load_indicies, tsetup, thold, tcq,
-                            min_slew, max_slew, min_driver_in_cap, max_load, pindynamic)
+                            min_slew, max_slew, min_driver_in_cap, max_load, pindynamic,
+                            out_reg=out_reg)
 
     LIB_file.write('    cell_leakage_power : %.3f;\n' % (leakage))
     LIB_file.write('}\n')

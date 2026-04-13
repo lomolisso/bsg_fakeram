@@ -23,11 +23,15 @@ class Memory:
     self.depth          = int(sram_data['depth'])
     self.num_banks      = int(sram_data['banks'])
     self.cache_type     = str(sram_data['type']) if 'type' in sram_data else 'cache'
-    self.port_type      = str(sram_data['port_type']) if 'port_type' in sram_data else '1rw'
+    self.port_type      = str(sram_data.get('port_type', '1rw'))
+    self.rdw_mode       = str(sram_data.get('rdw_mode', 'R')).upper()   # 'R'=read-first, 'W'=write-first
+    self.out_reg        = bool(sram_data.get('out_reg', True))           # True=registered, False=combinational
     if self.port_type == '1r1w':
       self.rw_ports = 0
       self.r_ports  = 1
       self.w_ports  = 1
+      if self.rdw_mode not in ('R', 'W'):
+        raise ValueError(f"rdw_mode must be 'R' or 'W', got '{self.rdw_mode}'")
     else:  # default: 1rw
       self.rw_ports = 1
       self.r_ports  = 0
