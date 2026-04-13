@@ -23,7 +23,15 @@ class Memory:
     self.depth          = int(sram_data['depth'])
     self.num_banks      = int(sram_data['banks'])
     self.cache_type     = str(sram_data['type']) if 'type' in sram_data else 'cache'
-    self.rw_ports       = 1
+    self.port_type      = str(sram_data['port_type']) if 'port_type' in sram_data else '1rw'
+    if self.port_type == '1r1w':
+      self.rw_ports = 0
+      self.r_ports  = 1
+      self.w_ports  = 1
+    else:  # default: 1rw
+      self.rw_ports = 1
+      self.r_ports  = 0
+      self.w_ports  = 0
     self.width_in_bytes = math.ceil(self.width_in_bits / 8.0)
     self.total_size     = self.width_in_bytes * self.depth
     if output_dir: # Output dir was set by command line option
@@ -79,7 +87,7 @@ class Memory:
   def __run_cacti( self ):
     fid = open(os.sep.join([self.results_dir,'cacti.cfg']), 'w')
     fid.write( cacti_config.format( self.total_size
-             , self.width_in_bytes, self.rw_ports, 0, 0
+             , self.width_in_bytes, self.rw_ports, self.r_ports, self.w_ports
              , self.process.tech_um, self.width_in_bytes*8, self.num_banks
              , self.cache_type ))
     fid.close()

@@ -15,22 +15,39 @@ def generate_verilog(mem, tmChkExpand=False):
   addr_width = math.ceil(math.log2(depth))
   crpt_on_x = 1
 
-  # Generate the 'setuphold' timing checks
-  setuphold_checks  = SH_LINE.format(sig='       we_in')
-  setuphold_checks += SH_LINE.format(sig='       ce_in')
-  if tmChkExpand: # per-bit checks
-    for i in range(addr_width): setuphold_checks += SH_LINE.format(sig=f'  addr_in[{i}]')
-    for i in range(      bits): setuphold_checks += SH_LINE.format(sig=f'    wd_in[{i}]')
-    for i in range(      bits): setuphold_checks += SH_LINE.format(sig=f'w_mask_in[{i}]')
-  else: # per-signal checks
-    setuphold_checks += SH_LINE.format(sig='     addr_in')
-    setuphold_checks += SH_LINE.format(sig='       wd_in')
-    setuphold_checks += SH_LINE.format(sig='   w_mask_in')
-
   fout = os.sep.join([mem.results_dir, name + '.v'])
-  with open(fout, 'w') as f:
-    f.write(VLOG_TEMPLATE.format(name=name, data_width=bits, depth=depth, addr_width=addr_width, 
-      crpt_on_x=crpt_on_x, setuphold_checks=setuphold_checks))
+
+  if mem.port_type == '1r1w':
+    if tmChkExpand:
+      setuphold_checks  = ''
+      for i in range(addr_width): setuphold_checks += SH_LINE.format(sig=f'r_addr_in[{i}]')
+      for i in range(addr_width): setuphold_checks += SH_LINE.format(sig=f'w_addr_in[{i}]')
+      for i in range(      bits): setuphold_checks += SH_LINE.format(sig=f'    wd_in[{i}]')
+      for i in range(      bits): setuphold_checks += SH_LINE.format(sig=f'w_mask_in[{i}]')
+    else:
+      setuphold_checks  = SH_LINE.format(sig='   r_ce_in')
+      setuphold_checks += SH_LINE.format(sig='   w_ce_in')
+      setuphold_checks += SH_LINE.format(sig=' r_addr_in')
+      setuphold_checks += SH_LINE.format(sig=' w_addr_in')
+      setuphold_checks += SH_LINE.format(sig='     wd_in')
+      setuphold_checks += SH_LINE.format(sig=' w_mask_in')
+    with open(fout, 'w') as f:
+      f.write(VLOG_1R1W_TEMPLATE.format(name=name, data_width=bits, depth=depth,
+        addr_width=addr_width, crpt_on_x=crpt_on_x, setuphold_checks=setuphold_checks))
+  else:
+    setuphold_checks  = SH_LINE.format(sig='       we_in')
+    setuphold_checks += SH_LINE.format(sig='       ce_in')
+    if tmChkExpand:
+      for i in range(addr_width): setuphold_checks += SH_LINE.format(sig=f'  addr_in[{i}]')
+      for i in range(      bits): setuphold_checks += SH_LINE.format(sig=f'    wd_in[{i}]')
+      for i in range(      bits): setuphold_checks += SH_LINE.format(sig=f'w_mask_in[{i}]')
+    else:
+      setuphold_checks += SH_LINE.format(sig='     addr_in')
+      setuphold_checks += SH_LINE.format(sig='       wd_in')
+      setuphold_checks += SH_LINE.format(sig='   w_mask_in')
+    with open(fout, 'w') as f:
+      f.write(VLOG_TEMPLATE.format(name=name, data_width=bits, depth=depth, addr_width=addr_width,
+        crpt_on_x=crpt_on_x, setuphold_checks=setuphold_checks))
 
 def generate_verilog_bb( mem ):
   '''Generate a verilog black-box view for the RAM'''
@@ -41,9 +58,14 @@ def generate_verilog_bb( mem ):
   crpt_on_x = 1
 
   fout = os.sep.join([mem.results_dir, name + '.bb.v'])
-  with open(fout, 'w') as f:
-    f.write(VLOG_BB_TEMPLATE.format(name=name, data_width=bits, depth=depth, addr_width=addr_width, 
-      crpt_on_x=crpt_on_x))
+  if mem.port_type == '1r1w':
+    with open(fout, 'w') as f:
+      f.write(VLOG_1R1W_BB_TEMPLATE.format(name=name, data_width=bits, depth=depth,
+        addr_width=addr_width, crpt_on_x=crpt_on_x))
+  else:
+    with open(fout, 'w') as f:
+      f.write(VLOG_BB_TEMPLATE.format(name=name, data_width=bits, depth=depth, addr_width=addr_width,
+        crpt_on_x=crpt_on_x))
 
 # Template line for a 'setuphold' time check
 SH_LINE = '      $setuphold (posedge clk, {sig}, 0, 0, notifier);\n'
@@ -145,6 +167,121 @@ module {name}
    input  [BITS-1:0]        w_mask_in;
    input                    clk;
    input                    ce_in;
+
+endmodule
+'''
+
+# Template for a verilog 1r1w RAM model (exclusive read + write ports)
+VLOG_1R1W_TEMPLATE = '''\
+module {name}
+(
+   rd_out,
+   r_addr_in,
+   r_ce_in,
+   w_addr_in,
+   w_ce_in,
+   wd_in,
+   w_mask_in,
+   clk
+);
+   parameter BITS = {data_width};
+   parameter WORD_DEPTH = {depth};
+   parameter ADDR_WIDTH = {addr_width};
+   parameter corrupt_mem_on_X_p = {crpt_on_x};
+
+   output reg [BITS-1:0]    rd_out;
+   input  [ADDR_WIDTH-1:0]  r_addr_in;
+   input                    r_ce_in;
+   input  [ADDR_WIDTH-1:0]  w_addr_in;
+   input                    w_ce_in;
+   input  [BITS-1:0]        wd_in;
+   input  [BITS-1:0]        w_mask_in;
+   input                    clk;
+
+   reg    [BITS-1:0]        mem [0:WORD_DEPTH-1];
+
+   integer j;
+
+   always @(posedge clk)
+   begin
+      // Write port
+      if (w_ce_in)
+      begin
+         if (corrupt_mem_on_X_p &&
+             ((^w_ce_in === 1'bx) || (^w_addr_in === 1'bx))
+            )
+         begin
+            for (j = 0; j < WORD_DEPTH; j = j + 1)
+               mem[j] <= 'x;
+            $display("warning: w_ce_in or w_addr_in is unknown in {name}");
+         end
+         else
+         begin
+            mem[w_addr_in] <= (wd_in & w_mask_in) | (mem[w_addr_in] & ~w_mask_in);
+         end
+      end
+
+      // Read port (independent; reads new value if same address was written this cycle)
+      if (r_ce_in)
+      begin
+         if (corrupt_mem_on_X_p && (^r_addr_in === 1'bx))
+         begin
+            rd_out <= 'x;
+            $display("warning: r_addr_in is unknown in {name}");
+         end
+         else
+         begin
+            rd_out <= mem[r_addr_in];
+         end
+      end
+      else
+      begin
+         rd_out <= 'x;
+      end
+   end
+
+   // Timing check placeholders (will be replaced during SDF back-annotation)
+   reg notifier;
+   specify
+      // Delay from clk to rd_out
+      (posedge clk *> rd_out) = (0, 0);
+
+      // Timing checks
+      $width     (posedge clk,               0, 0, notifier);
+      $width     (negedge clk,               0, 0, notifier);
+      $period    (posedge clk,               0,    notifier);
+{setuphold_checks}
+   endspecify
+
+endmodule
+'''
+
+# Template for a verilog 1r1w RAM interface (black-box)
+VLOG_1R1W_BB_TEMPLATE = '''\
+module {name}
+(
+   rd_out,
+   r_addr_in,
+   r_ce_in,
+   w_addr_in,
+   w_ce_in,
+   wd_in,
+   w_mask_in,
+   clk
+);
+   parameter BITS = {data_width};
+   parameter WORD_DEPTH = {depth};
+   parameter ADDR_WIDTH = {addr_width};
+   parameter corrupt_mem_on_X_p = {crpt_on_x};
+
+   output reg [BITS-1:0]    rd_out;
+   input  [ADDR_WIDTH-1:0]  r_addr_in;
+   input                    r_ce_in;
+   input  [ADDR_WIDTH-1:0]  w_addr_in;
+   input                    w_ce_in;
+   input  [BITS-1:0]        wd_in;
+   input  [BITS-1:0]        w_mask_in;
+   input                    clk;
 
 endmodule
 '''

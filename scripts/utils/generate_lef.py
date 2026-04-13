@@ -37,7 +37,16 @@ def generate_lef( mem ):
     # Calculate the pin spacing (pitch)
     #########################################
 
-    number_of_pins = 3*bits + addr_width + 3
+    is_1r1w = (mem.port_type == '1r1w')
+    # 1rw: w_mask_in + rd_out + wd_in (3*bits) + addr_in (addr_width) + we_in + ce_in + clk (3)
+    # 1r1w: w_mask_in + wd_in + w_addr_in + rd_out + r_addr_in (3*bits + 2*addr_width) + w_ce_in + r_ce_in + clk (3) + 1 extra vs 1rw
+    if is_1r1w:
+        number_of_pins = 3*bits + 2*addr_width + 4
+        num_groups = 3  # write group | read group | control group
+    else:
+        number_of_pins = 3*bits + addr_width + 3
+        num_groups = 4
+
     number_of_tracks_available = math.floor((h - 2*y_offset) / min_pin_pitch)
     number_of_spare_tracks = number_of_tracks_available - number_of_pins
 
@@ -54,7 +63,7 @@ def generate_lef( mem ):
     track_count -= 1
 
     pin_pitch = min_pin_pitch * track_count
-    group_pitch = math.floor((number_of_tracks_available - number_of_pins*track_count) / 4)*mem.process.pinPitch_um
+    group_pitch = math.floor((number_of_tracks_available - number_of_pins*track_count) / num_groups)*mem.process.pinPitch_um
 
     #########################################
     # LEF HEADER
@@ -73,25 +82,47 @@ def generate_lef( mem ):
     ########################################
 
     y_step = y_offset
-    for i in range(int(bits)) :
-        y_step = lef_add_pin( fid, mem, 'w_mask_in[%d]'%i, True, y_step, pin_pitch )
+    if is_1r1w:
+        # Write port group: w_mask_in, wd_in, w_addr_in, w_ce_in
+        for i in range(int(bits)) :
+            y_step = lef_add_pin( fid, mem, 'w_mask_in[%d]'%i, True, y_step, pin_pitch )
+        for i in range(int(bits)) :
+            y_step = lef_add_pin( fid, mem, 'wd_in[%d]'%i, True, y_step, pin_pitch )
+        for i in range(int(addr_width)) :
+            y_step = lef_add_pin( fid, mem, 'w_addr_in[%d]'%i, True, y_step, pin_pitch )
+        y_step = lef_add_pin( fid, mem, 'w_ce_in', True, y_step, pin_pitch )
 
-    y_step += group_pitch-pin_pitch
-    for i in range(int(bits)) :
-        y_step = lef_add_pin( fid, mem, 'rd_out[%d]'%i, False, y_step, pin_pitch )
+        # Read port group: rd_out, r_addr_in, r_ce_in
+        y_step += group_pitch-pin_pitch
+        for i in range(int(bits)) :
+            y_step = lef_add_pin( fid, mem, 'rd_out[%d]'%i, False, y_step, pin_pitch )
+        for i in range(int(addr_width)) :
+            y_step = lef_add_pin( fid, mem, 'r_addr_in[%d]'%i, True, y_step, pin_pitch )
+        y_step = lef_add_pin( fid, mem, 'r_ce_in', True, y_step, pin_pitch )
 
-    y_step += group_pitch-pin_pitch
-    for i in range(int(bits)) :
-        y_step = lef_add_pin( fid, mem, 'wd_in[%d]'%i, True, y_step, pin_pitch )
+        # Shared control group: clk
+        y_step += group_pitch-pin_pitch
+        y_step = lef_add_pin( fid, mem, 'clk', True, y_step, pin_pitch )
+    else:
+        for i in range(int(bits)) :
+            y_step = lef_add_pin( fid, mem, 'w_mask_in[%d]'%i, True, y_step, pin_pitch )
 
-    y_step += group_pitch-pin_pitch
-    for i in range(int(addr_width)) :
-        y_step = lef_add_pin( fid, mem, 'addr_in[%d]'%i, True, y_step, pin_pitch )
+        y_step += group_pitch-pin_pitch
+        for i in range(int(bits)) :
+            y_step = lef_add_pin( fid, mem, 'rd_out[%d]'%i, False, y_step, pin_pitch )
 
-    y_step += group_pitch-pin_pitch
-    y_step = lef_add_pin( fid, mem, 'we_in', True, y_step, pin_pitch )
-    y_step = lef_add_pin( fid, mem, 'ce_in', True, y_step, pin_pitch )
-    y_step = lef_add_pin( fid, mem, 'clk',   True, y_step, pin_pitch )
+        y_step += group_pitch-pin_pitch
+        for i in range(int(bits)) :
+            y_step = lef_add_pin( fid, mem, 'wd_in[%d]'%i, True, y_step, pin_pitch )
+
+        y_step += group_pitch-pin_pitch
+        for i in range(int(addr_width)) :
+            y_step = lef_add_pin( fid, mem, 'addr_in[%d]'%i, True, y_step, pin_pitch )
+
+        y_step += group_pitch-pin_pitch
+        y_step = lef_add_pin( fid, mem, 'we_in', True, y_step, pin_pitch )
+        y_step = lef_add_pin( fid, mem, 'ce_in', True, y_step, pin_pitch )
+        y_step = lef_add_pin( fid, mem, 'clk',   True, y_step, pin_pitch )
 
     ########################################
     # Create VDD/VSS Strapes
@@ -192,32 +223,68 @@ def generate_lef( mem ):
         # current pin to the top of last pin (start with bottom edge)
         prev_y = 0
         y_step = y_offset
-        for i in range(int(bits)) :
+        if is_1r1w:
+            # Write group: w_mask_in (bits) + wd_in (bits) + w_addr_in (addr_width) + w_ce_in (1)
+            for i in range(int(bits)) :
+                fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,pin_height,y_step-min_pin_width/2))
+                prev_y = y_step+min_pin_width/2
+                y_step += pin_pitch
+            for i in range(int(bits)) :
+                fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,pin_height,y_step-min_pin_width/2))
+                prev_y = y_step+min_pin_width/2
+                y_step += pin_pitch
+            for i in range(int(addr_width)) :
+                fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,pin_height,y_step-min_pin_width/2))
+                prev_y = y_step+min_pin_width/2
+                y_step += pin_pitch
             fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,pin_height,y_step-min_pin_width/2))
             prev_y = y_step+min_pin_width/2
             y_step += pin_pitch
-        y_step += group_pitch-pin_pitch
-        for i in range(int(bits)) :
+            # Read group: rd_out (bits) + r_addr_in (addr_width) + r_ce_in (1)
+            y_step += group_pitch-pin_pitch
+            for i in range(int(bits)) :
+                fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,pin_height,y_step-min_pin_width/2))
+                prev_y = y_step+min_pin_width/2
+                y_step += pin_pitch
+            for i in range(int(addr_width)) :
+                fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,pin_height,y_step-min_pin_width/2))
+                prev_y = y_step+min_pin_width/2
+                y_step += pin_pitch
             fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,pin_height,y_step-min_pin_width/2))
             prev_y = y_step+min_pin_width/2
             y_step += pin_pitch
-        y_step += group_pitch-pin_pitch
-        for i in range(int(bits)) :
+            # Shared group: clk (1)
+            y_step += group_pitch-pin_pitch
             fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,pin_height,y_step-min_pin_width/2))
             prev_y = y_step+min_pin_width/2
             y_step += pin_pitch
-        y_step += group_pitch-pin_pitch
-        for i in range(int(addr_width)) :
-            fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,pin_height,y_step-min_pin_width/2))
-            prev_y = y_step+min_pin_width/2
-            y_step += pin_pitch
-        y_step += group_pitch-pin_pitch
-        for i in range(3):
-            fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,pin_height,y_step-min_pin_width/2))
-            prev_y = y_step+min_pin_width/2
-            y_step += pin_pitch
+        else:
+            for i in range(int(bits)) :
+                fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,pin_height,y_step-min_pin_width/2))
+                prev_y = y_step+min_pin_width/2
+                y_step += pin_pitch
+            y_step += group_pitch-pin_pitch
+            for i in range(int(bits)) :
+                fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,pin_height,y_step-min_pin_width/2))
+                prev_y = y_step+min_pin_width/2
+                y_step += pin_pitch
+            y_step += group_pitch-pin_pitch
+            for i in range(int(bits)) :
+                fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,pin_height,y_step-min_pin_width/2))
+                prev_y = y_step+min_pin_width/2
+                y_step += pin_pitch
+            y_step += group_pitch-pin_pitch
+            for i in range(int(addr_width)) :
+                fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,pin_height,y_step-min_pin_width/2))
+                prev_y = y_step+min_pin_width/2
+                y_step += pin_pitch
+            y_step += group_pitch-pin_pitch
+            for i in range(3):
+                fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,pin_height,y_step-min_pin_width/2))
+                prev_y = y_step+min_pin_width/2
+                y_step += pin_pitch
 
-        # Final shapre from top of last pin to top edge
+        # Final shape from top of last pin to top edge
         fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,pin_height,h))
 
     # Not flipped therefore no pins on M3 (Full rect)
@@ -275,32 +342,68 @@ def generate_lef( mem ):
         # current pin to the top of last pin (start with bottom edge)
         prev_y = 0
         y_step = y_offset
-        for i in range(int(bits)) :
+        if is_1r1w:
+            # Write group: w_mask_in (bits) + wd_in (bits) + w_addr_in (addr_width) + w_ce_in (1)
+            for i in range(int(bits)) :
+                fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,min_pin_width,y_step-min_pin_width/2))
+                prev_y = y_step+min_pin_width/2
+                y_step += pin_pitch
+            for i in range(int(bits)) :
+                fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,min_pin_width,y_step-min_pin_width/2))
+                prev_y = y_step+min_pin_width/2
+                y_step += pin_pitch
+            for i in range(int(addr_width)) :
+                fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,min_pin_width,y_step-min_pin_width/2))
+                prev_y = y_step+min_pin_width/2
+                y_step += pin_pitch
             fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,min_pin_width,y_step-min_pin_width/2))
             prev_y = y_step+min_pin_width/2
             y_step += pin_pitch
-        y_step += group_pitch-pin_pitch
-        for i in range(int(bits)) :
+            # Read group: rd_out (bits) + r_addr_in (addr_width) + r_ce_in (1)
+            y_step += group_pitch-pin_pitch
+            for i in range(int(bits)) :
+                fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,min_pin_width,y_step-min_pin_width/2))
+                prev_y = y_step+min_pin_width/2
+                y_step += pin_pitch
+            for i in range(int(addr_width)) :
+                fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,min_pin_width,y_step-min_pin_width/2))
+                prev_y = y_step+min_pin_width/2
+                y_step += pin_pitch
             fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,min_pin_width,y_step-min_pin_width/2))
             prev_y = y_step+min_pin_width/2
             y_step += pin_pitch
-        y_step += group_pitch-pin_pitch
-        for i in range(int(bits)) :
+            # Shared group: clk (1)
+            y_step += group_pitch-pin_pitch
             fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,min_pin_width,y_step-min_pin_width/2))
             prev_y = y_step+min_pin_width/2
             y_step += pin_pitch
-        y_step += group_pitch-pin_pitch
-        for i in range(int(addr_width)) :
-            fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,min_pin_width,y_step-min_pin_width/2))
-            prev_y = y_step+min_pin_width/2
-            y_step += pin_pitch
-        y_step += group_pitch-pin_pitch
-        for i in range(3):
-            fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,min_pin_width,y_step-min_pin_width/2))
-            prev_y = y_step+min_pin_width/2
-            y_step += pin_pitch
+        else:
+            for i in range(int(bits)) :
+                fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,min_pin_width,y_step-min_pin_width/2))
+                prev_y = y_step+min_pin_width/2
+                y_step += pin_pitch
+            y_step += group_pitch-pin_pitch
+            for i in range(int(bits)) :
+                fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,min_pin_width,y_step-min_pin_width/2))
+                prev_y = y_step+min_pin_width/2
+                y_step += pin_pitch
+            y_step += group_pitch-pin_pitch
+            for i in range(int(bits)) :
+                fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,min_pin_width,y_step-min_pin_width/2))
+                prev_y = y_step+min_pin_width/2
+                y_step += pin_pitch
+            y_step += group_pitch-pin_pitch
+            for i in range(int(addr_width)) :
+                fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,min_pin_width,y_step-min_pin_width/2))
+                prev_y = y_step+min_pin_width/2
+                y_step += pin_pitch
+            y_step += group_pitch-pin_pitch
+            for i in range(3):
+                fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,min_pin_width,y_step-min_pin_width/2))
+                prev_y = y_step+min_pin_width/2
+                y_step += pin_pitch
 
-        # Final shapre from top of last pin to top edge
+        # Final shape from top of last pin to top edge
         fid.write('    RECT 0 %.3f %.3f %.3f ;\n' % (prev_y,min_pin_width,h))
 
     # Overlap layer (full rect)
