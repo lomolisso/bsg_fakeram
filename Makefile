@@ -2,12 +2,24 @@ export TOP_DIR :=$(shell git rev-parse --show-toplevel)
 
 export CACTI_BUILD_DIR := $(TOP_DIR)/tools/cacti
 
-CONFIG := $(TOP_DIR)/example_cfgs/freepdk45.cfg
+CONFIG ?= $(TOP_DIR)/example_cfgs/freepdk45.cfg
 
 OUT_DIR := $(TOP_DIR)/results
 
+.PHONY: run
+
+# Default run: uses CONFIG (defaults to freepdk45.cfg).
+#   make run
+#   make run CONFIG=example_cfgs/my.cfg
 run:
 	./scripts/run.py $(CONFIG) --output_dir $(OUT_DIR)
+
+# Named-config targets: make run.<cfg_stem>
+#   Looks up  example_cfgs/<cfg_stem>.cfg  and writes to  results/<cfg_stem>/
+#   Example:  make run.1c8n4w4t
+#             make run.freepdk45
+run.%:
+	./scripts/run.py $(TOP_DIR)/example_cfgs/$*.cfg --output_dir $(OUT_DIR)/$*
 
 view.%:
 	klayout ./$(OUT_DIR)/$*/$*.lef &
