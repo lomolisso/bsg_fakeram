@@ -1,0 +1,194 @@
+diff --git a/io.cc b/io.cc
+index 8ff3b20..7102d6b 100644
+--- a/io.cc
++++ b/io.cc
+@@ -931,7 +931,7 @@ uca_org_t cacti_interface(const string & infile_name)
+   solve(&fin_res);
+ //  output_UCA(&fin_res);
+ //  Wire::print_wire();
+-  output_data_csv(fin_res);
++  output_data_csv(fin_res, infile_name + ".out");
+ 
+   if (!g_ip->dvs_voltage.empty())
+   {
+@@ -1320,7 +1320,7 @@ uca_org_t cacti_interface(
+   g_ip->display_ip();
+   solve(&fin_res);
+   output_UCA(&fin_res);
+-  output_data_csv(fin_res);
++  output_data_csv(fin_res, infile_name + ".out");
+   delete (g_ip);
+ 
+   return fin_res;
+@@ -1675,14 +1675,14 @@ bool InputParameter::error_checking()
+ 
+ 
+ 
+-void output_data_csv(const uca_org_t & fin_res)
++void output_data_csv(const uca_org_t & fin_res, const string & fn)
+ {
+   //TODO: the csv output should remain
+-  fstream file("out.csv", ios::in);
++  fstream file(fn, ios::in);
+   bool    print_index = file.fail();
+   file.close();
+ 
+-  file.open("out.csv", ios::out|ios::app);
++  file.open(fn, ios::out|ios::app);
+   if (file.fail() == true)
+   {
+     cerr << "File out.csv could not be opened successfully" << endl;
+@@ -1693,7 +1693,7 @@ void output_data_csv(const uca_org_t & fin_res)
+     {
+       file << "Tech node (nm), ";
+       file << "Capacity (bytes), ";
+-      file << "Number of banks, ";
++      //file << "Number of banks, ";
+       file << "Associativity, ";
+       file << "Output width (bits), ";
+       file << "Access time (ns), ";
+@@ -1718,25 +1718,25 @@ void output_data_csv(const uca_org_t & fin_res)
+ //      file << "Leakage per bank with leak power management (mW), ";
+ //      file << "Refresh power as percentage of standby leakage, ";
+       file << "Area (mm2), ";
+-      file << "Ndwl, ";
+-      file << "Ndbl, ";
+-      file << "Nspd, ";
+-      file << "Ndcm, ";
+-      file << "Ndsam_level_1, ";
+-      file << "Ndsam_level_2, ";
+-      file << "Data arrary area efficiency %, ";
+-      file << "Ntwl, ";
+-      file << "Ntbl, ";
+-      file << "Ntspd, ";
+-      file << "Ntcm, ";
+-      file << "Ntsam_level_1, ";
+-      file << "Ntsam_level_2, ";
+-      file << "Tag arrary area efficiency %, ";
++      //file << "Ndwl, ";
++      //file << "Ndbl, ";
++      //file << "Nspd, ";
++      //file << "Ndcm, ";
++      //file << "Ndsam_level_1, ";
++      //file << "Ndsam_level_2, ";
++      //file << "Data arrary area efficiency %, ";
++      //file << "Ntwl, ";
++      //file << "Ntbl, ";
++      //file << "Ntspd, ";
++      //file << "Ntcm, ";
++      //file << "Ntsam_level_1, ";
++      //file << "Ntsam_level_2, ";
++      //file << "Tag arrary area efficiency %, ";
+ 
+ //      file << "Resistance per unit micron (ohm-micron), ";
+ //      file << "Capacitance per unit micron (fF per micron), ";
+ //      file << "Unit-length wire delay (ps), ";
+-//      file << "FO4 delay (ps), ";
++      file << "FO4 delay (ps), ";
+ //      file << "delay route to bank (including crossb delay) (ps), ";
+ //      file << "Crossbar delay (ps), ";
+ //      file << "Dyn read energy per access from closed page (nJ), ";
+@@ -1760,11 +1760,13 @@ void output_data_csv(const uca_org_t & fin_res)
+ //      file << "Delay opt (perc), ";
+ //      file << "Repeater opt (perc), ";
+ //      file << "Aspect ratio";
++      file << "Width (um), ";
++      file << "Height (um), ";
+       file << endl;
+     }
+     file << g_ip->F_sz_nm << ", ";
+     file << g_ip->cache_sz << ", ";
+-    file << g_ip->nbanks << ", ";
++    //file << g_ip->nbanks << ", ";
+     file << g_ip->tag_assoc << ", ";
+     file << g_ip->out_w << ", ";
+     file << fin_res.access_time*1e+9 << ", ";
+@@ -1818,38 +1820,38 @@ void output_data_csv(const uca_org_t & fin_res)
+ //    file << fin_res.data_array.refresh_power / fin_res.data_array.total_power.readOp.leakage << ", ";
+     file << fin_res.area*1e-6 << ", ";
+ 
+-    file << fin_res.data_array2->Ndwl << ", ";
+-    file << fin_res.data_array2->Ndbl << ", ";
+-    file << fin_res.data_array2->Nspd << ", ";
+-    file << fin_res.data_array2->deg_bl_muxing << ", ";
+-    file << fin_res.data_array2->Ndsam_lev_1 << ", ";
+-    file << fin_res.data_array2->Ndsam_lev_2 << ", ";
+-    file << fin_res.data_array2->area_efficiency << ", ";
+-    if (!(g_ip->fully_assoc || g_ip->pure_cam || g_ip->pure_ram))
+-    {
+-    file << fin_res.tag_array2->Ndwl << ", ";
+-    file << fin_res.tag_array2->Ndbl << ", ";
+-    file << fin_res.tag_array2->Nspd << ", ";
+-    file << fin_res.tag_array2->deg_bl_muxing << ", ";
+-    file << fin_res.tag_array2->Ndsam_lev_1 << ", ";
+-    file << fin_res.tag_array2->Ndsam_lev_2 << ", ";
+-    file << fin_res.tag_array2->area_efficiency << ", ";
+-    }
+-    else
+-    {
+-    	file << "N/A" << ", ";
+-    	file << "N/A"<< ", ";
+-    	file << "N/A" << ", ";
+-    	file << "N/A" << ", ";
+-    	file << "N/A" << ", ";
+-    	file << "N/A" << ", ";
+-    	file << "N/A" << ", ";
+-    }
++    //file << fin_res.data_array2->Ndwl << ", ";
++    //file << fin_res.data_array2->Ndbl << ", ";
++    //file << fin_res.data_array2->Nspd << ", ";
++    //file << fin_res.data_array2->deg_bl_muxing << ", ";
++    //file << fin_res.data_array2->Ndsam_lev_1 << ", ";
++    //file << fin_res.data_array2->Ndsam_lev_2 << ", ";
++    //file << fin_res.data_array2->area_efficiency << ", ";
++    //if (!(g_ip->fully_assoc || g_ip->pure_cam || g_ip->pure_ram))
++    //{
++    //file << fin_res.tag_array2->Ndwl << ", ";
++    //file << fin_res.tag_array2->Ndbl << ", ";
++    //file << fin_res.tag_array2->Nspd << ", ";
++    //file << fin_res.tag_array2->deg_bl_muxing << ", ";
++    //file << fin_res.tag_array2->Ndsam_lev_1 << ", ";
++    //file << fin_res.tag_array2->Ndsam_lev_2 << ", ";
++    //file << fin_res.tag_array2->area_efficiency << ", ";
++    //}
++    //else
++    //{
++    //    file << "N/A" << ", ";
++    //    file << "N/A"<< ", ";
++    //    file << "N/A" << ", ";
++    //    file << "N/A" << ", ";
++    //    file << "N/A" << ", ";
++    //    file << "N/A" << ", ";
++    //    file << "N/A" << ", ";
++    //}
+ 
+ //    file << g_tp.wire_inside_mat.R_per_um << ", ";
+ //    file << g_tp.wire_inside_mat.C_per_um / 1e-15 << ", ";
+ //    file << g_tp.unit_len_wire_del / 1e-12 << ", ";
+-//    file << g_tp.FO4 / 1e-12 << ", ";
++    file << g_tp.FO4 / 1e-12 << ", ";
+ //    file << fin_res.data_array.delay_route_to_bank / 1e-9 << ", ";
+ //    file << fin_res.data_array.delay_crossbar / 1e-9 << ", ";
+ //    file << fin_res.data_array.dyn_read_energy_from_closed_page / 1e-9 << ", ";
+@@ -1867,6 +1869,8 @@ void output_data_csv(const uca_org_t & fin_res)
+ //    file << fin_res.data_array.cas_latency * 1e9 << ", " ;
+ //    file << fin_res.data_array.precharge_delay * 1e9 << ", " ;
+ //    file << fin_res.data_array.all_banks_height / fin_res.data_array.all_banks_width;
++    file << fin_res.cache_ht << ", ";
++    file << fin_res.cache_len << ", ";
+     file<<endl;
+   }
+   file.close();
+diff --git a/io.h b/io.h
+index 1bd06cf..4a3926b 100644
+--- a/io.h
++++ b/io.h
+@@ -38,7 +38,7 @@
+ #include "cacti_interface.h"
+ 
+ 
+-void output_data_csv(const uca_org_t & fin_res);
++void output_data_csv(const uca_org_t & fin_res, const string & fn);
+ void output_UCA(uca_org_t * fin_res);
+ 
+ 

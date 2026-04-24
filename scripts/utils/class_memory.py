@@ -49,7 +49,7 @@ class Memory:
       self.cacti_dir = cacti_dir
     else:
       self.cacti_dir = os.environ['CACTI_BUILD_DIR']
-    self.__run_cacti()
+    self._run_cacti()
     with open( os.sep.join([self.results_dir, 'cacti.cfg.out']), 'r' ) as fid:
       lines = [line for line in fid]
       cacti_data = lines[-1].split(',')
@@ -85,10 +85,10 @@ class Memory:
     self.t_setup_ns = 0.050  ;# arbitrary 50ps setup
     self.t_hold_ns  = 0.050  ;# arbitrary 50ps hold
 
-  # __run_cacti: shell out to cacti to generate a csv file with more data
+  # _run_cacti: shell out to cacti to generate a csv file with more data
   # regarding this memory based on the input parameters from the json
   # configuration file.
-  def __run_cacti( self ):
+  def _run_cacti( self ):
     fid = open(os.sep.join([self.results_dir,'cacti.cfg']), 'w')
     fid.write( cacti_config.format( self.total_size
              , self.width_in_bytes, self.rw_ports, self.r_ports, self.w_ports
